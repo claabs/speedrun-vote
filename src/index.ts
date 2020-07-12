@@ -9,7 +9,7 @@ async function main() {
     await login();
     const link = await getInviteLink();
     L.info({ link }, 'Invite link');
-    const guildId = config.defaultServerId;
+    // const guildId = config.defaultServerId;
     // await initServer(guildId);
   } catch (err) {
     L.error(err);

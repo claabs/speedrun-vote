@@ -23,16 +23,48 @@
 </head>
 
 <body>
-  <form action="/invite" method="get" class="game-select-for">
-    <div class="game-select-form">
+  <form action="/invite" method="get" class="invite-game-form">
+    <div class="invite-game-form">
       <label for="src-game">Select a game you would like to setup the Discord bot for:</label>
-      <select name="src-game" id=src-game">
+      <select name="src-game" id="src-game">
         <option value="">Please choose an option</option>
         <option value="mkw">Mario Kart Wii</option>
       </select>
     </div>
-    <div class="game-select-for">
-      <input type="submit" value="Continue">
+    <div class="invite-game-form">
+      <input type="submit" value="Invite">
+    </div>
+  </form>
+  <form action="/poll" method="post" class="new-poll-form">
+    <div class="new-poll-form">
+      <label for="srcGame">Select a game you would like to start a poll for:</label>
+      <select name="srcGame" id="srcGame">
+        <option value="">Please choose an option</option>
+        <option value="mkw">Mario Kart Wii</option>
+      </select>
+      <div class="prompt-form">
+        <label for="pollQuestion">Prompt: </label>
+        <input type="pollQuestion" name="pollQuestion" id="pollQuestion" required>
+      </div>
+      <div class="option-form">
+        <label for="option1">Option 1: </label>
+        <input type="option1" name="options[]" id="option1" required>
+      </div>
+      <div class="option-form">
+        <label for="option2">Option 2: </label>
+        <input type="option2" name="options[]" id="option2" required>
+      </div>
+      <div class="option-form">
+        <label for="option3">Option 3: </label>
+        <input type="option3" name="options[]" id="option3">
+      </div>
+      <div class="option-form">
+        <label for="option4">Option 4: </label>
+        <input type="option4" name="options[]" id="option4">
+      </div>
+    </div>
+    <div class="new-poll-form">
+      <input type="submit" value="Create">
     </div>
   </form>
 </body>

@@ -91,3 +91,9 @@ export function storeVoteChannel(channelId: string, game = config.defaultSrcGame
   data.voteChannelId = channelId;
   fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
 }
+
+export function getVoteChannel(game = config.defaultSrcGame): string {
+  const filename = path.join(gamesPath, `${game}.json`);
+  const data = getData(filename);
+  return data.voteChannelId || '';
+}

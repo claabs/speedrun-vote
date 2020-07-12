@@ -9,8 +9,11 @@ import config from '../config';
 import L from '../logger';
 import { storeUser, storeSrcUser, VoteUserData, storeGuildId } from '../store';
 import { checkDiscordUser } from './speedruncom';
-import { giveSpeedrunRole, getPermissionsNumber } from './bot';
+import { giveSpeedrunRole, getPermissionsNumber, initServer } from './bot';
+import { createPoll } from './poll';
+import { CreatePollRequest } from './types/poll/poll-data';
 
+// TODO: Add this to @types/passport-discord
 interface DiscordAuthenticateOptions extends AuthenticateOptions {
   permissions?: number;
   prompt?: string;
@@ -34,14 +37,14 @@ function saveSrcGame(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-function checkBotCallback(req: Request, res: Response, next: NextFunction) {
+async function checkBotCallback(req: Request, res: Response, next: NextFunction) {
   if (req.session) {
     const guildId = req.query.guild_id;
     const { srcGame } = req.session;
     if (guildId && srcGame) {
       L.info(`Writing guild to game database`);
       storeGuildId(guildId as string, srcGame as string);
-      // TODO: run initServer here
+      await initServer(guildId as string);
     }
   }
   next();
@@ -107,7 +110,8 @@ if (development) {
 } else {
   router.use(express.static('public'));
 }
-router.use(express.json());
+// router.use(express.json());
+router.use(express.urlencoded({ extended: true }));
 
 passport.use(
   new Strategy(
@@ -151,6 +155,7 @@ router.get(
 router.get('/link', async (req, res) => {
   if (!req.session) throw new Error('Missing session');
   const { srcUser } = req.session;
+  // TODO: We fail here on the invite callback cause we're missing session data. Should use a middleware instead?
   if (!srcUser) throw new Error('Missing srcUser for session');
   const discordInfo = getSessionDiscordInfo(req.session);
   if (await checkDiscordUser(discordInfo.displayName, srcUser)) {
@@ -161,8 +166,9 @@ router.get('/link', async (req, res) => {
   res.redirect('/failure');
 });
 
-router.post('/poll', async (req, res) => {
-  L.debug({ body: req.body }, 'incoming POST body');
+router.post<any, any, CreatePollRequest, any>('/poll', async (req, res) => {
+  L.debug({ body: req.body }, 'incoming new poll body');
+  await createPoll(req.body, req.body.srcGame);
   res.status(200).send();
 });
 

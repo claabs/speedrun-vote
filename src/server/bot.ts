@@ -9,8 +9,8 @@ import discordjs, {
 } from 'discord.js';
 import config from '../config';
 import L from '../logger';
-import { ChoiceResult, PollQuestion } from './poll';
-import { storeRole, storeVoteChannel, getGuild, getRole } from '../store';
+import { ChoiceResult, PollQuestion } from './types/poll/poll-data';
+import { storeRole, storeVoteChannel, getGuild, getRole, getVoteChannel } from '../store';
 
 const client = new discordjs.Client();
 const EMOJI_SUFFIX = '\uFE0F\u20E3';
@@ -42,8 +42,7 @@ function findVoteChannel(guildId: string): TextChannel {
   if (!guild) throw new Error('Cannot get guild');
   const botMember = guild.me;
   if (!botMember) throw new Error('Bot not in this guild');
-
-  const voteChannel = guild.channels.cache.find((channel) => channel.name === 'vote');
+  const voteChannel = guild.channels.cache.find((channel) => channel.id === 'vote');
   if (!voteChannel) throw new Error(`No vote channel in guild ${guild.name}`);
   const permission = voteChannel.permissionsFor(botMember);
   if (!(voteChannel.type === 'text' && permission && Boolean(permission.has('SEND_MESSAGES'))))
@@ -64,10 +63,15 @@ function emojiToNumber(emoji: string): number | null {
 
 export async function createPollMessage(
   guildId: string,
+  voteChannelId: string,
   pollQuestion: PollQuestion
 ): Promise<string> {
   L.info({ pollQuestion }, 'Creating poll message');
-  const voteChannel = findVoteChannel(guildId);
+  // const voteChannel = findVoteChannel(guildId);
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('Cannot get guild');
+  const voteChannel = guild.channels.cache.find((channel) => channel.id === voteChannelId);
+  if (!voteChannel) throw new Error('Could not find vote channel');
 
   const embedMessage = new MessageEmbed();
   if (config.color) embedMessage.setColor(config.color);
@@ -75,7 +79,7 @@ export async function createPollMessage(
   pollQuestion.choices.forEach((choice, index) => {
     embedMessage.addField(numberToEmoji(index + 1), choice);
   });
-  const voteMessage = await voteChannel.send(embedMessage);
+  const voteMessage = await (voteChannel as TextChannel).send(embedMessage);
   const reactPromises = pollQuestion.choices.map((_choice, index) => {
     return voteMessage.react(numberToEmoji(index + 1));
   });
@@ -98,15 +102,27 @@ export async function getPollResults(guildId: string, messageId: string): Promis
   return choiceResults;
 }
 
+function channelExists(guild: Guild): TextChannel | false {
+  const channelId = getVoteChannel();
+  const existingChannel = guild.channels.cache.find((channel) => channel.id === channelId);
+  return (existingChannel as TextChannel) || false;
+}
+
 async function initChannel(guild: Guild, runnerRole: Role): Promise<TextChannel> {
+  const { me } = guild;
+  if (!me) throw new Error('Cannot find me?');
   const overwrites: OverwriteData[] = [
     {
       id: guild.roles.everyone,
-      deny: ['ADD_REACTIONS', 'SEND_MESSAGES', 'USE_EXTERNAL_EMOJIS', 'VIEW_CHANNEL'],
+      deny: ['ADD_REACTIONS', 'SEND_MESSAGES', 'VIEW_CHANNEL'],
     },
     {
       id: runnerRole,
-      allow: ['SEND_MESSAGES'],
+      allow: ['VIEW_CHANNEL'],
+    },
+    {
+      id: me,
+      allow: ['SEND_MESSAGES', 'VIEW_CHANNEL', 'ADD_REACTIONS'],
     },
   ];
   L.info(`Creating vote channel in guild: ${guild.id}`);
@@ -117,6 +133,12 @@ async function initChannel(guild: Guild, runnerRole: Role): Promise<TextChannel>
     reason: 'Initializing speedrun vote channels',
   });
   return voteChannel;
+}
+
+async function roleExists(guild: Guild): Promise<Role | false> {
+  const roleId = getRole();
+  const existingRole = await guild.roles.fetch(roleId);
+  return existingRole || false;
 }
 
 async function initRole(guild: Guild): Promise<Role> {
@@ -139,13 +161,18 @@ export interface InitServerResp {
 
 export async function initServer(guildId: string): Promise<InitServerResp> {
   L.info(`Initializing guild: ${guildId}`);
-  // TODO: Don't create roles if they exist already
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('Cannot get guild');
-  const role = await initRole(guild);
-  storeRole(role.id);
-  const voteChannel = await initChannel(guild, role);
-  storeVoteChannel(voteChannel.id);
+  let role = await roleExists(guild);
+  if (!role) {
+    role = await initRole(guild);
+    storeRole(role.id);
+  }
+  let voteChannel = channelExists(guild);
+  if (!voteChannel) {
+    voteChannel = await initChannel(guild, role);
+    storeVoteChannel(voteChannel.id);
+  }
   return {
     runnerRoleId: role.id,
     voteChannelId: voteChannel.id,
