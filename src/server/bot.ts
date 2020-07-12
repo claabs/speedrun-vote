@@ -1,26 +1,40 @@
-import discordjs, { TextChannel, MessageEmbed, OverwriteData, Role, Guild } from 'discord.js';
+import discordjs, {
+  TextChannel,
+  MessageEmbed,
+  OverwriteData,
+  Role,
+  Guild,
+  Permissions,
+  PermissionResolvable,
+} from 'discord.js';
 import config from '../config';
 import L from '../logger';
 import { ChoiceResult, PollQuestion } from './poll';
+import { storeRole, storeVoteChannel, getGuild, getRole } from '../store';
 
 const client = new discordjs.Client();
 const EMOJI_SUFFIX = '\uFE0F\u20E3';
+const PERMISSIONS: PermissionResolvable[] = [
+  'MANAGE_ROLES',
+  'MANAGE_CHANNELS',
+  'READ_MESSAGE_HISTORY',
+  'SEND_MESSAGES',
+  'EMBED_LINKS',
+  'ADD_REACTIONS',
+  'VIEW_CHANNEL',
+];
 
 export async function login(): Promise<void> {
   await client.login(config.botToken);
 }
 
 export async function getInviteLink(): Promise<string> {
-  const link = await client.generateInvite([
-    'MANAGE_ROLES',
-    'MANAGE_CHANNELS',
-    'READ_MESSAGE_HISTORY',
-    'SEND_MESSAGES',
-    'EMBED_LINKS',
-    'ADD_REACTIONS',
-    'VIEW_CHANNEL',
-  ]);
+  const link = await client.generateInvite(PERMISSIONS);
   return link;
+}
+
+export function getPermissionsNumber(): number {
+  return Permissions.resolve(PERMISSIONS);
 }
 
 function findVoteChannel(guildId: string): TextChannel {
@@ -125,12 +139,30 @@ export interface InitServerResp {
 
 export async function initServer(guildId: string): Promise<InitServerResp> {
   L.info(`Initializing guild: ${guildId}`);
+  // TODO: Don't create roles if they exist already
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('Cannot get guild');
   const role = await initRole(guild);
+  storeRole(role.id);
   const voteChannel = await initChannel(guild, role);
+  storeVoteChannel(voteChannel.id);
   return {
     runnerRoleId: role.id,
     voteChannelId: voteChannel.id,
   };
+}
+
+export async function giveSpeedrunRole(
+  discordUserId: string,
+  game = config.defaultSrcGame
+): Promise<void> {
+  const guildId = getGuild(game);
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) throw new Error('Cannot get guild');
+  const runnerRoleId = getRole(game);
+  if (!runnerRoleId) throw new Error('Cannot get role');
+  const user = await guild.members.fetch({
+    user: discordUserId,
+  });
+  await user.roles.add(runnerRoleId);
 }

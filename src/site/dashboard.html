@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Manage SpeedrunVote">
+  <meta name="author" content="Charlie Laabs">
+  <title>Moderator Dashboard</title>
+
+  <!-- <link rel="icon" href="img/favicon.ico" type="image/x-icon"> -->
+  <!-- <link rel="apple-touch-icon" href="img/apple-192.png"> -->
+  <meta name="theme-color" content="#202020" />
+
+  <style>
+    /* body {
+      font-family: sans-serif;
+      text-align: center;
+      color: white;
+      background-color: rgb(32, 32, 32);
+    } */
+  </style>
+</head>
+
+<body>
+  <form action="/invite" method="get" class="game-select-for">
+    <div class="game-select-form">
+      <label for="src-game">Select a game you would like to setup the Discord bot for:</label>
+      <select name="src-game" id=src-game">
+        <option value="">Please choose an option</option>
+        <option value="mkw">Mario Kart Wii</option>
+      </select>
+    </div>
+    <div class="game-select-for">
+      <input type="submit" value="Continue">
+    </div>
+  </form>
+</body>
+
+</html>
