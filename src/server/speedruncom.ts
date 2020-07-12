@@ -61,12 +61,16 @@ async function isRunner(userId: string, game = config.defaultSrcGame): Promise<b
 
 export type SRCRole = 'RUNNER' | 'MODERATOR' | 'OBSERVER';
 
-export async function checkGameRole(
+export async function checkGamesRole(
   username: string,
-  game = config.defaultSrcGame
+  games = [config.defaultSrcGame]
 ): Promise<SRCRole> {
   const userId = await getUserId(username);
-  if (await isModerator(userId, game)) return 'MODERATOR';
-  if (await isRunner(userId, game)) return 'RUNNER';
+  const moderatorPromises = games.map(async (game) => isModerator(userId, game));
+  const moderatorResults = await Promise.all(moderatorPromises);
+  if (moderatorResults.includes(true)) return 'MODERATOR';
+  const runnerPromises = games.map(async (game) => isRunner(userId, game));
+  const runnerResults = await Promise.all(runnerPromises);
+  if (runnerResults.includes(true)) return 'RUNNER';
   return 'OBSERVER';
 }

@@ -7,9 +7,9 @@ import path from 'path';
 import { VerifyCallback } from 'passport-oauth2';
 import config from '../config';
 import L from '../logger';
-import { storeUser, storeSrcUser, VoteUserData, storeGuildId } from '../store';
+import { UserData, createUser, getUser, setUser, createGuild } from '../store';
 import { checkDiscordUser } from './speedruncom';
-import { giveSpeedrunRole, getPermissionsNumber, initServer } from './bot';
+import { giveRoles, getPermissionsNumber, initServer } from './bot';
 import { createPoll } from './poll';
 import { CreatePollRequest } from './types/poll/poll-data';
 
@@ -43,7 +43,7 @@ async function checkBotCallback(req: Request, res: Response, next: NextFunction)
     const { srcGame } = req.session;
     if (guildId && srcGame) {
       L.info(`Writing guild to game database`);
-      storeGuildId(guildId as string, srcGame as string);
+      createGuild(guildId as string, [srcGame]);
       await initServer(guildId as string);
     }
   }
@@ -96,7 +96,7 @@ router.use(passport.initialize());
 router.use(passport.session());
 
 // Set up passport
-passport.serializeUser((user: VoteUserData, done) => {
+passport.serializeUser((user: UserData, done) => {
   done(null, user);
 });
 passport.deserializeUser((user: string, done) => {
@@ -121,7 +121,7 @@ passport.use(
       callbackURL: config.discordCallback,
     },
     (accessToken: string, refreshToken: string, profile: Profile, cb: VerifyCallback) => {
-      cb(null, storeUser(profile));
+      cb(null, createUser(profile));
     }
   )
 );
@@ -159,22 +159,27 @@ router.get('/link', async (req, res) => {
   if (!srcUser) throw new Error('Missing srcUser for session');
   const discordInfo = getSessionDiscordInfo(req.session);
   if (await checkDiscordUser(discordInfo.displayName, srcUser)) {
-    storeSrcUser(discordInfo.id, srcUser);
-    giveSpeedrunRole(discordInfo.id);
+    const user = getUser(discordInfo.id);
+    if (!user) throw new Error(`Cannot find user ${discordInfo.id}`);
+    user.srcUsername = srcUser;
+    setUser(user);
+    giveRoles(discordInfo.id);
     res.redirect('/success');
   }
   res.redirect('/failure');
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 router.post<any, any, CreatePollRequest, any>('/poll', async (req, res) => {
   L.debug({ body: req.body }, 'incoming new poll body');
-  await createPoll(req.body, req.body.srcGame);
+  await createPoll(req.body);
   res.status(200).send();
 });
 
 const baseUrl = new URL(config.baseUrl);
 const basePath = baseUrl.pathname;
 
+// TODO: Error handler for all the errors I throw
 app.use(basePath, router);
 
 app.listen(config.port);

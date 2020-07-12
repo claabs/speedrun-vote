@@ -21,7 +21,7 @@ export interface PollResult {
 export type ChoiceResult = User[];
 
 export interface CreatePollRequest {
-  srcGame: string;
+  guildId: string;
   pollQuestion: string;
   options: string[];
 }

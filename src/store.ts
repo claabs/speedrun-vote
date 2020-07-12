@@ -1,32 +1,48 @@
 /* eslint-disable no-underscore-dangle */
 import fs from 'fs';
 import path from 'path';
-import { Profile } from 'passport-discord';
-import config from './config';
+import type { Profile } from 'passport-discord';
+import type { PollQuestion } from './server/types/poll/poll-data';
+import type { SRCRole } from './server/speedruncom';
 
-export interface VoteUserData {
+export interface Users {
+  [discordId: string]: UserData;
+}
+
+export interface UserData {
   srcUsername?: string;
   id: string;
   username: string;
   discriminator: string;
+  games: GameRole;
 }
 
-export interface UserList {
-  [discordId: string]: VoteUserData;
+export interface GameRole {
+  [gameId: string]: SRCRole;
 }
 
-export interface GameData {
-  users: UserList;
-  guildId?: string;
+export interface Guilds {
+  [guildId: string]: GuildData;
+}
+
+export interface GuildData {
+  id: string;
+  games: string[];
+  polls: PollStore[];
   runnerRoleId?: string;
   voteChannelId?: string;
 }
 
-const gamesPath = path.join('config', 'games');
-fs.mkdirSync(gamesPath, { recursive: true });
+export interface PollStore extends PollQuestion {
+  completed: boolean;
+}
 
-function getData(filename: string): GameData {
-  let data: GameData = { users: {} };
+const guildsFile = path.join('config', 'guilds.json');
+const usersFile = path.join('config', 'users.json');
+fs.mkdirSync('config', { recursive: true });
+
+function getGuildsData(filename: string): Guilds {
+  let data: Guilds = {};
   if (fs.existsSync(filename)) {
     const file = fs.readFileSync(filename, 'utf8');
     data = JSON.parse(file);
@@ -34,66 +50,80 @@ function getData(filename: string): GameData {
   return data;
 }
 
-// eslint-disable-next-line import/prefer-default-export
-export function storeUser(profile: Profile, game = config.defaultSrcGame): VoteUserData {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  const user: VoteUserData = {
+function getUsersData(filename: string): Users {
+  let data: Users = {};
+  if (fs.existsSync(filename)) {
+    const file = fs.readFileSync(filename, 'utf8');
+    data = JSON.parse(file);
+  }
+  return data;
+}
+
+export function setUser(user: UserData): void {
+  const data = getUsersData(usersFile);
+  data[user.id] = user;
+  fs.writeFileSync(usersFile, JSON.stringify(data), 'utf8');
+}
+
+export function getUser(discordId: string): UserData | undefined {
+  const data = getUsersData(usersFile);
+  return data[discordId];
+}
+
+export function createUser(profile: Profile): UserData {
+  const data = getUsersData(usersFile);
+  const user: UserData = {
     id: profile.id,
     username: profile.username,
     discriminator: profile.discriminator,
+    games: {},
   };
-  data.users[profile.id] = user;
-  fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
+  data[profile.id] = user;
+  fs.writeFileSync(usersFile, JSON.stringify(data), 'utf8');
   return user;
 }
 
-export function storeSrcUser(
-  discordId: string,
-  srcUser: string,
-  game = config.defaultSrcGame
-): void {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  data.users[discordId].srcUsername = srcUser;
-  fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
+export function createGuild(guildId: string, games: string[]): GuildData {
+  const data = getGuildsData(guildsFile);
+  const record: GuildData = {
+    id: guildId,
+    games,
+    polls: [],
+  };
+  data[guildId] = record;
+  fs.writeFileSync(guildsFile, JSON.stringify(data), 'utf8');
+  return record;
 }
 
-export function storeRole(roleId: string, game = config.defaultSrcGame): void {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  data.runnerRoleId = roleId;
-  fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
+export function storeRole(guildId: string, roleId: string): void {
+  const data = getGuildsData(guildsFile);
+  data[guildId].runnerRoleId = roleId;
+  fs.writeFileSync(guildsFile, JSON.stringify(data), 'utf8');
 }
 
-export function getRole(game = config.defaultSrcGame): string {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  return data.runnerRoleId || '';
+export function getRole(guildId: string): string | undefined {
+  const data = getGuildsData(guildsFile);
+  return data[guildId].runnerRoleId;
 }
 
-export function storeGuildId(guildId: string, game = config.defaultSrcGame): void {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  data.guildId = guildId;
-  fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
+export function setGuild(record: GuildData): void {
+  const data = getGuildsData(guildsFile);
+  data[record.id] = record;
+  fs.writeFileSync(guildsFile, JSON.stringify(data), 'utf8');
 }
 
-export function getGuild(game = config.defaultSrcGame): string {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  return data.guildId || '';
+export function getGuild(guildId: string): GuildData | undefined {
+  const data = getGuildsData(guildsFile);
+  return data[guildId];
 }
 
-export function storeVoteChannel(channelId: string, game = config.defaultSrcGame): void {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  data.voteChannelId = channelId;
-  fs.writeFileSync(filename, JSON.stringify(data), 'utf8');
+export function storeVoteChannel(guildId: string, channelId: string): void {
+  const data = getGuildsData(guildsFile);
+  data[guildId].voteChannelId = channelId;
+  fs.writeFileSync(guildsFile, JSON.stringify(data), 'utf8');
 }
 
-export function getVoteChannel(game = config.defaultSrcGame): string {
-  const filename = path.join(gamesPath, `${game}.json`);
-  const data = getData(filename);
-  return data.voteChannelId || '';
+export function getVoteChannel(guildId: string): string | undefined {
+  const data = getGuildsData(guildsFile);
+  return data[guildId].voteChannelId;
 }

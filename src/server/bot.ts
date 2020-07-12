@@ -10,7 +10,8 @@ import discordjs, {
 import config from '../config';
 import L from '../logger';
 import { ChoiceResult, PollQuestion } from './types/poll/poll-data';
-import { storeRole, storeVoteChannel, getGuild, getRole, getVoteChannel } from '../store';
+import { storeRole, storeVoteChannel, getGuild, getRole, getVoteChannel, getUser } from '../store';
+import { checkGamesRole } from './speedruncom';
 
 const client = new discordjs.Client();
 const EMOJI_SUFFIX = '\uFE0F\u20E3';
@@ -103,7 +104,8 @@ export async function getPollResults(guildId: string, messageId: string): Promis
 }
 
 function channelExists(guild: Guild): TextChannel | false {
-  const channelId = getVoteChannel();
+  const channelId = getVoteChannel(guild.id);
+  if (!channelId) return false;
   const existingChannel = guild.channels.cache.find((channel) => channel.id === channelId);
   return (existingChannel as TextChannel) || false;
 }
@@ -136,7 +138,8 @@ async function initChannel(guild: Guild, runnerRole: Role): Promise<TextChannel>
 }
 
 async function roleExists(guild: Guild): Promise<Role | false> {
-  const roleId = getRole();
+  const roleId = getRole(guild.id);
+  if (!roleId) return false;
   const existingRole = await guild.roles.fetch(roleId);
   return existingRole || false;
 }
@@ -166,12 +169,12 @@ export async function initServer(guildId: string): Promise<InitServerResp> {
   let role = await roleExists(guild);
   if (!role) {
     role = await initRole(guild);
-    storeRole(role.id);
+    storeRole(guildId, role.id);
   }
   let voteChannel = channelExists(guild);
   if (!voteChannel) {
     voteChannel = await initChannel(guild, role);
-    storeVoteChannel(voteChannel.id);
+    storeVoteChannel(guildId, voteChannel.id);
   }
   return {
     runnerRoleId: role.id,
@@ -179,17 +182,33 @@ export async function initServer(guildId: string): Promise<InitServerResp> {
   };
 }
 
-export async function giveSpeedrunRole(
-  discordUserId: string,
-  game = config.defaultSrcGame
-): Promise<void> {
-  const guildId = getGuild(game);
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) throw new Error('Cannot get guild');
-  const runnerRoleId = getRole(game);
-  if (!runnerRoleId) throw new Error('Cannot get role');
-  const user = await guild.members.fetch({
-    user: discordUserId,
+export function findCommonGuilds(userId: string): string[] {
+  const guilds = client.guilds.cache.array();
+  const filteredGuilds = guilds.filter((guild) => guild.member(userId)).map((guild) => guild.id);
+  return filteredGuilds;
+}
+
+export async function giveRoles(discordUserId: string): Promise<void> {
+  const userData = getUser(discordUserId);
+  if (!userData) throw new Error(`User ${discordUserId} not in database`);
+  const { srcUsername } = userData;
+  if (!srcUsername) throw new Error(`User ${discordUserId} has no SRC username`);
+  const guildIds = findCommonGuilds(discordUserId);
+  if (!guildIds.length) throw new Error(`User ${discordUserId} has no common guilds with bot`);
+  const giveRolePromises = guildIds.map(async (guildId) => {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) throw new Error('Cannot get guild');
+    const guildData = getGuild(guildId);
+    if (!guildData) throw new Error(`Guild ${guildId} not in database`);
+    // TODO: Check user's SRC status. Reject if 'OBSERVER'
+    const srcRole = await checkGamesRole(srcUsername, guildData.games);
+    if (srcRole === 'OBSERVER') return;
+    const roleId = guildData.runnerRoleId;
+    if (!roleId) throw new Error('Guild data missing role');
+    const user = await guild.members.fetch({
+      user: discordUserId,
+    });
+    await user.roles.add(roleId);
   });
-  await user.roles.add(runnerRoleId);
+  await Promise.all(giveRolePromises);
 }
