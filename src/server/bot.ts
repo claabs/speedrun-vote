@@ -9,7 +9,7 @@ import discordjs, {
 } from 'discord.js';
 import config from '../config';
 import L from '../logger';
-import { ChoiceResult, PollQuestion } from './types/poll/poll-data';
+import { PollQuestion, RawChoiceResult } from './types/poll/poll-data';
 import { storeRole, storeVoteChannel, getGuild, getRole, getVoteChannel, getUser } from '../store';
 import { checkGamesRole } from './speedruncom';
 
@@ -41,13 +41,10 @@ export function getPermissionsNumber(): number {
 function findVoteChannel(guildId: string): TextChannel {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) throw new Error('Cannot get guild');
-  const botMember = guild.me;
-  if (!botMember) throw new Error('Bot not in this guild');
-  const voteChannel = guild.channels.cache.find((channel) => channel.id === 'vote');
-  if (!voteChannel) throw new Error(`No vote channel in guild ${guild.name}`);
-  const permission = voteChannel.permissionsFor(botMember);
-  if (!(voteChannel.type === 'text' && permission && Boolean(permission.has('SEND_MESSAGES'))))
-    throw new Error(`Vote channel not text channel that bot can send to`);
+  const voteChannelId = getVoteChannel(guildId);
+  if (!voteChannelId) throw new Error(`Guild ${guildId} does not have a channel in the database`);
+  const voteChannel = guild.channels.cache.find((channel) => channel.id === voteChannelId);
+  if (!voteChannel) throw new Error('Could not find vote channel');
   return voteChannel as TextChannel;
 }
 
@@ -62,17 +59,9 @@ function emojiToNumber(emoji: string): number | null {
   return Number.parseInt(emoji[0], 10);
 }
 
-export async function createPollMessage(
-  guildId: string,
-  voteChannelId: string,
-  pollQuestion: PollQuestion
-): Promise<string> {
+export async function createPollMessage(pollQuestion: PollQuestion): Promise<string> {
   L.info({ pollQuestion }, 'Creating poll message');
-  // const voteChannel = findVoteChannel(guildId);
-  const guild = client.guilds.cache.get(guildId);
-  if (!guild) throw new Error('Cannot get guild');
-  const voteChannel = guild.channels.cache.find((channel) => channel.id === voteChannelId);
-  if (!voteChannel) throw new Error('Could not find vote channel');
+  const voteChannel = findVoteChannel(pollQuestion.guildId);
 
   const embedMessage = new MessageEmbed();
   if (config.color) embedMessage.setColor(config.color);
@@ -88,12 +77,15 @@ export async function createPollMessage(
   return voteMessage.id;
 }
 
-export async function getPollResults(guildId: string, messageId: string): Promise<ChoiceResult[]> {
+export async function getPollResults(
+  guildId: string,
+  messageId: string
+): Promise<RawChoiceResult[]> {
   L.info({ messageId }, 'Getting poll results');
   const voteChannel = findVoteChannel(guildId);
   const voteMessage = await voteChannel.messages.fetch(messageId);
   const reactions = voteMessage.reactions.cache.values();
-  const choiceResults: ChoiceResult[] = [];
+  const choiceResults: RawChoiceResult[] = [];
   Array.from(reactions).forEach((react) => {
     const number = emojiToNumber(react.emoji.toString());
     if (!number) return;
@@ -176,6 +168,7 @@ export async function initServer(guildId: string): Promise<InitServerResp> {
     voteChannel = await initChannel(guild, role);
     storeVoteChannel(guildId, voteChannel.id);
   }
+  // TODO: Check all existing users against server members and grant role
   return {
     runnerRoleId: role.id,
     voteChannelId: voteChannel.id,
@@ -191,8 +184,8 @@ export function findCommonGuilds(userId: string): string[] {
 export async function giveRoles(discordUserId: string): Promise<void> {
   const userData = getUser(discordUserId);
   if (!userData) throw new Error(`User ${discordUserId} not in database`);
-  const { srcUsername } = userData;
-  if (!srcUsername) throw new Error(`User ${discordUserId} has no SRC username`);
+  const { srcId } = userData;
+  if (!srcId) throw new Error(`User ${discordUserId} has no SRC username`);
   const guildIds = findCommonGuilds(discordUserId);
   if (!guildIds.length) throw new Error(`User ${discordUserId} has no common guilds with bot`);
   const giveRolePromises = guildIds.map(async (guildId) => {
@@ -201,7 +194,7 @@ export async function giveRoles(discordUserId: string): Promise<void> {
     const guildData = getGuild(guildId);
     if (!guildData) throw new Error(`Guild ${guildId} not in database`);
     // TODO: Check user's SRC status. Reject if 'OBSERVER'
-    const srcRole = await checkGamesRole(srcUsername, guildData.games);
+    const srcRole = await checkGamesRole(srcId, guildData.games);
     if (srcRole === 'OBSERVER') return;
     const roleId = guildData.runnerRoleId;
     if (!roleId) throw new Error('Guild data missing role');

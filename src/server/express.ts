@@ -8,7 +8,7 @@ import { VerifyCallback } from 'passport-oauth2';
 import config from '../config';
 import L from '../logger';
 import { UserData, createUser, getUser, setUser, createGuild } from '../store';
-import { checkDiscordUser } from './speedruncom';
+import { checkDiscordUser, getUserId } from './speedruncom';
 import { giveRoles, getPermissionsNumber, initServer } from './bot';
 import { createPoll } from './poll';
 import { CreatePollRequest } from './types/poll/poll-data';
@@ -30,24 +30,33 @@ function saveSrcUser(req: Request, res: Response, next: NextFunction) {
 
 function saveSrcGame(req: Request, res: Response, next: NextFunction) {
   if (req.session) {
-    const srcGame = req.query['src-game'];
-    L.debug(`Writing speedrun.com game ${srcGame} to session`);
+    const { srcGame } = req.query;
+    L.debug(`Writing speedrun.com games ${srcGame} to session`);
     req.session.srcGame = srcGame;
   }
   next();
 }
 
-async function checkBotCallback(req: Request, res: Response, next: NextFunction) {
-  if (req.session) {
-    const guildId = req.query.guild_id;
+async function handleDiscordCallback(req: Request, res: Response, next: NextFunction) {
+  const guildId = req.query.guild_id;
+  if (guildId) {
+    if (!req.session) throw new Error('No session found');
     const { srcGame } = req.session;
-    if (guildId && srcGame) {
+    if (guildId && srcGame.length) {
       L.info(`Writing guild to game database`);
-      createGuild(guildId as string, [srcGame]);
+      createGuild(guildId as string, srcGame);
       await initServer(guildId as string);
+      passport.authenticate('discord', {
+        successRedirect: '/success-bot',
+        failureRedirect: '/failure',
+      })(req, res, next);
     }
+  } else {
+    passport.authenticate('discord', {
+      successRedirect: '/link',
+      failureRedirect: '/failure',
+    })(req, res, next);
   }
-  next();
 }
 
 export interface SessionDiscordInfo {
@@ -142,14 +151,7 @@ router.get(
     scope: ['bot'],
   } as AuthenticateOptions)
 );
-router.get(
-  '/callback',
-  checkBotCallback,
-  passport.authenticate('discord', {
-    failureRedirect: '/failure',
-    successRedirect: '/link',
-  })
-);
+router.get('/callback', handleDiscordCallback);
 
 // TODO: This can probably just be a middleware after the callback authenticate?
 router.get('/link', async (req, res) => {
@@ -161,19 +163,24 @@ router.get('/link', async (req, res) => {
   if (await checkDiscordUser(discordInfo.displayName, srcUser)) {
     const user = getUser(discordInfo.id);
     if (!user) throw new Error(`Cannot find user ${discordInfo.id}`);
+    const srcId = await getUserId(srcUser);
+    if (!srcId) throw new Error(`Cannot get speedrun.com userId for username ${srcUser}`);
+    user.srcId = srcId;
     user.srcUsername = srcUser;
     setUser(user);
     giveRoles(discordInfo.id);
     res.redirect('/success');
+  } else {
+    res.redirect('/failure');
   }
-  res.redirect('/failure');
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 router.post<any, any, CreatePollRequest, any>('/poll', async (req, res) => {
+  // TODO: Validate that the user is moderator in the guild it is starting a poll for
   L.debug({ body: req.body }, 'incoming new poll body');
   await createPoll(req.body);
-  res.status(200).send();
+  res.status(200).send(); // TODO: Make this a page
 });
 
 const baseUrl = new URL(config.baseUrl);

@@ -16,7 +16,7 @@ export interface Run {
   game: string;
   level: null;
   category: string;
-  videos: Videos;
+  videos: Videos | null;
   comment: null | string;
   status: StatusClass;
   players: Player[];

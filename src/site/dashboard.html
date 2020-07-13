@@ -25,10 +25,11 @@
 <body>
   <form action="/invite" method="get" class="invite-game-form">
     <div class="invite-game-form">
-      <label for="src-game">Select a game you would like to setup the Discord bot for:</label>
-      <select name="src-game" id="src-game">
+      <label for="src-game">Select a game(s) you would like to setup the Discord bot for:</label>
+      <select name="srcGame[]" id="src-game" multiple required>
         <option value="">Please choose an option</option>
         <option value="mkw">Mario Kart Wii</option>
+        <option value="mkwextracategories">Mario Kart Wii Category Extensions</option>
       </select>
     </div>
     <div class="invite-game-form">
@@ -38,10 +39,16 @@
   <form action="/poll" method="post" class="new-poll-form">
     <div class="new-poll-form">
       <label for="guildId">Select a Discord server you would like to start a poll in:</label>
-      <select name="guildId" id="guildId">
+      <select name="guildId" id="guildId" required>
         <option value="">Please choose an option</option>
-        <option value="mkw">Test Server</option>
+        <option value="480443658382999562">Test Server</option>
+        <option value="141314084569219072">Guzmer</option>
       </select>
+      <div class="date-form">
+        <label for="endTime">Choose a time (UTC/GMT) for the poll to end:</label>
+        <input type="datetime-local" id="endTime" name="endTime" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}"
+          required>
+      </div>
       <div class="prompt-form">
         <label for="pollQuestion">Prompt: </label>
         <input type="pollQuestion" name="pollQuestion" id="pollQuestion" required>
