@@ -5,6 +5,7 @@ import session from 'express-session';
 import FileStore from 'session-file-store';
 import path from 'path';
 import { VerifyCallback } from 'passport-oauth2';
+import helmet from 'helmet';
 import config from '../config';
 import L from '../logger';
 import { UserData, createUser, getUser, setUser, createGuild } from '../store';
@@ -89,15 +90,24 @@ const router = express.Router();
 
 const SessionStore = FileStore(session);
 
+router.use(helmet());
 router.use(
   session({
     store: new SessionStore({
       path: './config/sessions',
       retries: 1,
     }),
+    name: 'sessionId',
     secret: 'siglemic',
     resave: false,
     saveUninitialized: true,
+    cookie: {
+      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+      sameSite: true,
+      domain: new URL(config.baseUrl).hostname,
+      secure: !development,
+      httpOnly: true,
+    },
   })
 );
 
