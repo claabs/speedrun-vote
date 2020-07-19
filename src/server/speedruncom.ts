@@ -3,10 +3,46 @@ import { JSDOM } from 'jsdom';
 import got from 'got';
 import L from '../logger';
 import config from '../config';
-import { GameResponse } from './types/speedruncom/games';
+import { GameResponse, ModLevel, GameData, modLevelOrder } from './types/speedruncom/games';
 import { UserResponse } from './types/speedruncom/user';
 import { PersonalBestResponse } from './types/speedruncom/personal-bests';
 import { RunnerProof } from './types/poll/poll-data';
+import { PagedResponse } from './types/speedruncom/common';
+import { SelectOptions } from '../store';
+
+async function paginateData<Data>(url: string): Promise<Data[]> {
+  const limit = 200;
+  const existingParams = Object.fromEntries(new URL(url).searchParams);
+  const items = await got.paginate.all<Data, PagedResponse<Data>>(url, {
+    responseType: 'json',
+    searchParams: {
+      ...existingParams,
+      max: limit,
+      offset: 0,
+    },
+    pagination: {
+      transform: (response) => {
+        return response.body.data;
+      },
+      paginate: (response, allItems, currentItems) => {
+        const previousSearchParams = response.request.options.searchParams;
+        const previousOffset = previousSearchParams?.get('offset') || new URLSearchParams();
+
+        if (currentItems.length < limit) {
+          return false;
+        }
+
+        return {
+          searchParams: {
+            ...previousSearchParams,
+            offset: Number(previousOffset) + limit,
+          },
+        };
+      },
+    },
+  });
+  return items;
+}
 
 async function getDiscordNameFromProfile(srcUsername: string): Promise<string | null> {
   L.info(`Getting Discord display name for SRC user: ${srcUsername}`);
@@ -60,6 +96,24 @@ async function isRunner(userId: string, game = config.defaultSrcGame): Promise<b
     }
   );
   return gameResp.body.data.length > 0;
+}
+
+export async function getModeratedGames(
+  srcId: string,
+  minModLevel: ModLevel = 'moderator'
+): Promise<SelectOptions[]> {
+  const allowedModLevels = modLevelOrder.slice(modLevelOrder.indexOf(minModLevel));
+  const fullGamesData = await paginateData<GameData>(
+    `https://www.speedrun.com/api/v1/games?moderator=${srcId}`
+  );
+  const moderatedGames: SelectOptions[] = fullGamesData
+    .filter((game) => {
+      const modLevel = game.moderators[srcId];
+
+      return Boolean(modLevel) && allowedModLevels.includes(modLevel);
+    })
+    .map((game) => ({ value: game.id, display: game.names.international }));
+  return moderatedGames;
 }
 
 export async function runnerType(

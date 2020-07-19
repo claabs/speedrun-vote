@@ -23,7 +23,10 @@
 </head>
 
 <body>
-  <h3>Results:</h3>
+  <h3>Prompt: <%- question %> </h3>
+  <% choices.forEach(choice => { %>
+  <h4><%- choice %> </h4>
+  <% }) %>
 </body>
 
 </html>

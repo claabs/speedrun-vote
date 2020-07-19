@@ -16,6 +16,12 @@ export interface UserData {
   username: string;
   discriminator: string;
   games: GameRole;
+  moderatedGames: SelectOptions[];
+}
+
+export interface SelectOptions {
+  value: string;
+  display: string;
 }
 
 export interface GameRole {
@@ -28,6 +34,7 @@ export interface Guilds {
 
 export interface GuildData {
   id: string;
+  name?: string;
   games: string[];
   polls: string[];
   runnerRoleId?: string;
@@ -43,7 +50,7 @@ const usersFile = path.join('config', 'users.json');
 const pollsFile = path.join('config', 'polls.json');
 fs.mkdirSync('config', { recursive: true });
 
-function getGuildsData(filename = guildsFile): Guilds {
+export function getGuildsData(filename = guildsFile): Guilds {
   let data: Guilds = {};
   if (fs.existsSync(filename)) {
     const file = fs.readFileSync(filename, 'utf8');
@@ -88,6 +95,7 @@ export function createUser(profile: Profile): UserData {
     username: profile.username,
     discriminator: profile.discriminator,
     games: {},
+    moderatedGames: [],
   };
   data[profile.id] = user;
   fs.writeFileSync(usersFile, JSON.stringify(data), 'utf8');
@@ -116,7 +124,7 @@ export function storeRole(guildId: string, roleId: string): void {
 
 export function getRole(guildId: string): string | undefined {
   const data = getGuildsData();
-  return data[guildId].runnerRoleId;
+  return data[guildId]?.runnerRoleId;
 }
 
 export function setGuild(record: GuildData): void {
@@ -138,7 +146,18 @@ export function storeVoteChannel(guildId: string, channelId: string): void {
 
 export function getVoteChannel(guildId: string): string | undefined {
   const data = getGuildsData();
-  return data[guildId].voteChannelId;
+  return data[guildId]?.voteChannelId;
+}
+
+export function storeGuildName(guildId: string, name: string): void {
+  const data = getGuildsData();
+  data[guildId].name = name;
+  fs.writeFileSync(guildsFile, JSON.stringify(data), 'utf8');
+}
+
+export function getGuildName(guildId: string): string | undefined {
+  const data = getGuildsData();
+  return data[guildId]?.name;
 }
 
 export function createPoll(poll: PollQuestion): PollQuestion {

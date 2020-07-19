@@ -10,7 +10,16 @@ import discordjs, {
 import config from '../config';
 import L from '../logger';
 import { PollQuestion, RawChoiceResult } from './types/poll/poll-data';
-import { storeRole, storeVoteChannel, getGuild, getRole, getVoteChannel, getUser } from '../store';
+import {
+  storeRole,
+  storeVoteChannel,
+  getGuild,
+  getRole,
+  getVoteChannel,
+  getUser,
+  getGuildName,
+  storeGuildName,
+} from '../store';
 import { checkGamesRole } from './speedruncom';
 
 const client = new discordjs.Client();
@@ -167,6 +176,11 @@ export async function initServer(guildId: string): Promise<InitServerResp> {
   if (!voteChannel) {
     voteChannel = await initChannel(guild, role);
     storeVoteChannel(guildId, voteChannel.id);
+  }
+  let guildName = getGuildName(guildId);
+  if (!guildName) {
+    guildName = guild.name;
+    storeGuildName(guildId, guildName);
   }
   // TODO: Check all existing users against server members and grant role
   return {

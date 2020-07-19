@@ -6,10 +6,20 @@ import FileStore from 'session-file-store';
 import path from 'path';
 import { VerifyCallback } from 'passport-oauth2';
 import helmet from 'helmet';
+import 'ejs';
 import config from '../config';
 import L from '../logger';
-import { UserData, createUser, getUser, setUser, createGuild } from '../store';
-import { checkDiscordUser, getUserId } from './speedruncom';
+import {
+  UserData,
+  createUser,
+  getUser,
+  setUser,
+  createGuild,
+  getPoll,
+  SelectOptions,
+  getGuildsData,
+} from '../store';
+import { checkDiscordUser, getUserId, getModeratedGames } from './speedruncom';
 import { giveRoles, getPermissionsNumber, initServer } from './bot';
 import { createPoll } from './poll';
 import { CreatePollRequest } from './types/poll/poll-data';
@@ -38,6 +48,12 @@ function saveSrcGame(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+function getSessionDiscordId(req: Request): string {
+  const discordId = req.session?.passport?.user?.id;
+  if (!discordId) throw new Error('Cannot get Discord ID from session');
+  return discordId;
+}
+
 async function handleDiscordCallback(req: Request, res: Response, next: NextFunction) {
   const guildId = req.query.guild_id;
   if (guildId) {
@@ -63,6 +79,11 @@ async function handleDiscordCallback(req: Request, res: Response, next: NextFunc
 export interface SessionDiscordInfo {
   displayName: string;
   id: string;
+}
+
+export interface DashboardData {
+  games: SelectOptions[];
+  guilds: SelectOptions[];
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,13 +124,15 @@ router.use(
     saveUninitialized: true,
     cookie: {
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
-      sameSite: true,
+      sameSite: 'lax',
       domain: new URL(config.baseUrl).hostname,
       secure: !development,
       httpOnly: true,
     },
   })
 );
+
+app.set('view engine', 'ejs');
 
 router.use(passport.initialize());
 router.use(passport.session());
@@ -126,8 +149,10 @@ if (development) {
   router.use(
     express.static(path.join(__dirname, '..', 'site'), { index: false, extensions: ['html'] })
   );
+  app.set('views', path.join(__dirname, '..', 'site'));
 } else {
   router.use(express.static('public'));
+  app.set('views', path.join('public'));
 }
 // router.use(express.json());
 router.use(express.urlencoded({ extended: true }));
@@ -177,12 +202,60 @@ router.get('/link', async (req, res) => {
     if (!srcId) throw new Error(`Cannot get speedrun.com userId for username ${srcUser}`);
     user.srcId = srcId;
     user.srcUsername = srcUser;
+    user.moderatedGames = await getModeratedGames(srcId, 'moderator');
     setUser(user);
     giveRoles(discordInfo.id);
     res.redirect('/success');
   } else {
     res.redirect('/failure');
   }
+});
+
+router.get('/dashboard', (req, res, next) => {
+  const userId = getSessionDiscordId(req);
+  let moderatedGames: SelectOptions[];
+  let guilds: SelectOptions[];
+  const userData = getUser(userId);
+  if (!userData) {
+    moderatedGames = [];
+    guilds = [];
+  } else {
+    moderatedGames = userData.moderatedGames;
+    const guildsData = getGuildsData();
+    const mappedGuilds: (SelectOptions | null)[] = Object.values(guildsData).map((guild) => {
+      const matchedGameGuilds = guild.games.filter((game) =>
+        moderatedGames.some((moderatedGame) => moderatedGame.value === game)
+      );
+      if (matchedGameGuilds.length) {
+        return {
+          display: guild.name || 'unknown',
+          value: guild.id,
+        };
+      }
+      return null;
+    });
+    guilds = mappedGuilds.filter((guild) => guild) as SelectOptions[];
+  }
+  const dashboardData: DashboardData = { games: moderatedGames, guilds };
+  res.render('dashboard', dashboardData);
+  next();
+});
+
+router.get('/results/:pollId', (req, res, next) => {
+  const { pollId } = req.params;
+  if (!pollId) {
+    res.status(404).send();
+    next();
+    return;
+  }
+  const pollData = getPoll(pollId);
+  const results = pollData?.results;
+  if (!results) {
+    res.status(404).send();
+    next();
+    return;
+  }
+  res.render('results', pollData);
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

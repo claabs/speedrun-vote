@@ -1,3 +1,5 @@
+import { SingleResponse, PagedResponse, Link } from './common';
+
 export interface Names {
   international: string;
   japanese: string;
@@ -13,8 +15,12 @@ export interface Ruleset {
   'emulators-allowed': boolean;
 }
 
+export type ModLevel = 'moderator' | 'super-moderator';
+
+export const modLevelOrder: ModLevel[] = ['moderator', 'super-moderator'];
+
 export interface Moderators {
-  [userId: string]: string;
+  [userId: string]: ModLevel;
 }
 
 export interface AssetData {
@@ -40,11 +46,6 @@ export interface Assets {
   foreground: AssetDataNull;
 }
 
-export interface Link {
-  rel: string;
-  uri: string;
-}
-
 export interface GameData {
   id: string;
   names: Names;
@@ -67,18 +68,5 @@ export interface GameData {
   links: Link[];
 }
 
-export interface Pagination {
-  offset: number;
-  max: number;
-  size: number;
-  links: Link[];
-}
-
-export interface GameResponse {
-  data: GameData;
-}
-
-export interface GamesResponse {
-  data: GameData[];
-  pagination: Pagination;
-}
+export type GameResponse = SingleResponse<GameData>;
+export type GamesResponse = PagedResponse<GameData>;
