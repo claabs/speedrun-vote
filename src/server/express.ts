@@ -18,6 +18,7 @@ import {
   getPoll,
   SelectOptions,
   getGuildsData,
+  getGuild,
 } from '../store';
 import { checkDiscordUser, getUserId, getModeratedGames } from './speedruncom';
 import { giveRoles, getPermissionsNumber, initServer } from './bot';
@@ -28,6 +29,12 @@ import { CreatePollRequest } from './types/poll/poll-data';
 interface DiscordAuthenticateOptions extends AuthenticateOptions {
   permissions?: number;
   prompt?: string;
+}
+
+function getSessionDiscordId(req: Request): string {
+  const discordId = req.session?.passport?.user?.id;
+  if (!discordId) throw new Error('Cannot get Discord ID from session');
+  return discordId;
 }
 
 function saveSrcUser(req: Request, res: Response, next: NextFunction) {
@@ -41,17 +48,23 @@ function saveSrcUser(req: Request, res: Response, next: NextFunction) {
 
 function saveSrcGame(req: Request, res: Response, next: NextFunction) {
   if (req.session) {
-    const { srcGame } = req.query;
-    L.debug(`Writing speedrun.com games ${srcGame} to session`);
-    req.session.srcGame = srcGame;
+    const srcGames = req.query.srcGame as string[];
+    L.debug(`Writing speedrun.com games ${srcGames} to session`);
+    const discordId = getSessionDiscordId(req);
+    const userData = getUser(discordId);
+    if (!userData) throw new Error(`Could not find user: ${discordId}`);
+    const allowed = srcGames.every((srcGame) =>
+      userData.moderatedGames.map((game) => game.value).includes(srcGame)
+    );
+    if (allowed) {
+      req.session.srcGame = srcGames;
+      next();
+    } else {
+      res.status(403).send();
+    }
+  } else {
+    res.status(403).send();
   }
-  next();
-}
-
-function getSessionDiscordId(req: Request): string {
-  const discordId = req.session?.passport?.user?.id;
-  if (!discordId) throw new Error('Cannot get Discord ID from session');
-  return discordId;
 }
 
 async function handleDiscordCallback(req: Request, res: Response, next: NextFunction) {
@@ -202,7 +215,7 @@ router.get('/link', async (req, res) => {
     if (!srcId) throw new Error(`Cannot get speedrun.com userId for username ${srcUser}`);
     user.srcId = srcId;
     user.srcUsername = srcUser;
-    user.moderatedGames = await getModeratedGames(srcId, 'moderator');
+    user.moderatedGames = await getModeratedGames(srcId);
     setUser(user);
     giveRoles(discordInfo.id);
     res.redirect('/success');
@@ -260,10 +273,23 @@ router.get('/results/:pollId', (req, res, next) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 router.post<any, any, CreatePollRequest, any>('/poll', async (req, res) => {
-  // TODO: Validate that the user is moderator in the guild it is starting a poll for
   L.debug({ body: req.body }, 'incoming new poll body');
-  await createPoll(req.body);
-  res.status(200).send(); // TODO: Make this a page
+  const pollRequest = req.body;
+  const guild = getGuild(pollRequest.guildId);
+  if (!guild) throw new Error(`Cannot find guild: ${pollRequest.guildId}`);
+  const guildGames = guild.games;
+  const discordId = getSessionDiscordId(req);
+  const user = getUser(discordId);
+  if (!user) throw new Error(`Cannot find user: ${discordId}`);
+  const allowed = guildGames.every((guildGame) =>
+    user.moderatedGames.map((game) => game.value).includes(guildGame)
+  );
+  if (allowed) {
+    await createPoll(pollRequest);
+    res.status(200).send(); // TODO: Make this a page
+  } else {
+    res.status(403).send(); // TODO: Make this a page
+  }
 });
 
 const baseUrl = new URL(config.baseUrl);

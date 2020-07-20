@@ -90,12 +90,14 @@ export function getUser(discordId: string): UserData | undefined {
 
 export function createUser(profile: Profile): UserData {
   const data = getUsersData();
+  const existingUser = data[profile.id] as UserData | undefined;
   const user: UserData = {
+    games: {},
+    moderatedGames: [],
+    ...existingUser,
     id: profile.id,
     username: profile.username,
     discriminator: profile.discriminator,
-    games: {},
-    moderatedGames: [],
   };
   data[profile.id] = user;
   fs.writeFileSync(usersFile, JSON.stringify(data), 'utf8');

@@ -100,7 +100,7 @@ async function isRunner(userId: string, game = config.defaultSrcGame): Promise<b
 
 export async function getModeratedGames(
   srcId: string,
-  minModLevel: ModLevel = 'moderator'
+  minModLevel: ModLevel = 'super-moderator'
 ): Promise<SelectOptions[]> {
   const allowedModLevels = modLevelOrder.slice(modLevelOrder.indexOf(minModLevel));
   const fullGamesData = await paginateData<GameData>(
